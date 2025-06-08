@@ -1,21 +1,30 @@
+
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow
+import pages.firstPage as firstPage, pages.secondPage as secondPage, pages.thirdPage as thirdPage
+from PyQt5.QtWidgets import (QWidget, 
+                             QApplication, 
+                             QMainWindow, 
+                             QPushButton, 
+                             QTextEdit, 
+                             QHBoxLayout,
+                             QVBoxLayout,
+                             QStackedWidget
+                             ) 
+
 from PyQt5.QtCore import Qt
-
-class mainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Hail Hydra!")
-        self.setGeometry(1300,200,400,400)
-        self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
-
-        #Adding Buttons
         
 
 def main():
     app = QApplication(sys.argv)
-    window = mainWindow()
-    window.show()
+    stacked_widget = QStackedWidget()
+
+    page1 = firstPage(QStackedWidget)
+
+    stacked_widget.addWidget(page1)
+    
+    stacked_widget.setCurrentIndex(0)
+    stacked_widget.show()
+
     sys.exit(app.exec_())
 
 if __name__ == "__main__":
