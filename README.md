@@ -1,2 +1,2 @@
 # Hydra
-Video Compresser
+A File Sender to Telegram with video compresser.
