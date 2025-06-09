@@ -1,6 +1,12 @@
 
-import sys
-import pages.firstPage as firstPage, pages.secondPage as secondPage, pages.thirdPage as thirdPage
+import sys,os
+from pages.firstPage import firstPage
+from pages.secondPage import secondPage
+from pages.thirdPage import thirdPage
+import json
+from src import telegram_login
+import asyncio,threading
+
 from PyQt5.QtWidgets import (QWidget, 
                              QApplication, 
                              QMainWindow, 
@@ -13,18 +19,29 @@ from PyQt5.QtWidgets import (QWidget,
 
 from PyQt5.QtCore import Qt
         
-
 def main():
     app = QApplication(sys.argv)
     stacked_widget = QStackedWidget()
 
     page1 = firstPage(QStackedWidget)
+    page2 = secondPage(QStackedWidget)
+    page3 = thirdPage(QStackedWidget)
 
     stacked_widget.addWidget(page1)
-    
-    stacked_widget.setCurrentIndex(0)
-    stacked_widget.show()
+    stacked_widget.addWidget(page2)
+    stacked_widget.addWidget(page3)
 
+    session_details = telegram_login.session_loader()
+    
+    logged_in = telegram_login.saved_info_login(session_details) if session_details!=None else False
+        
+    if(logged_in!=False):
+        stacked_widget.setCurrentIndex(1)
+
+    else:
+        stacked_widget.setCurrentIndex(0)
+
+    stacked_widget.show()
     sys.exit(app.exec_())
 
 if __name__ == "__main__":

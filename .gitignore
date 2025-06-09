@@ -1,4 +1,6 @@
 test2.py
-HoardSession.session
-session_name.session
 test.py
+pages/__pycache__
+*.session
+__pycache__
+*.json
