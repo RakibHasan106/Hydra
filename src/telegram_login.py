@@ -20,31 +20,37 @@ def saved_info_login(session_details):
     else:
         return True
 
+
 def send_code(api_id,api_hash,phone_number):
-    session_path = os.path.join("./session","saved_session")
+    
+    session_path = os.path.join("./session","saved_session.session")
+    if(not os.path.isdir('./session')):
+        os.mkdir('./session')
+
     client = TelegramClient(session_path,api_id,api_hash)
     
     try:
         client.connect()
     except Exception as e:
+        print("exception occured during connecting: ")
+        print(e)
         return None
 
     if not client.is_user_authorized():
         try:
             client.send_code_request(phone_number)
         except Exception as E:
-
+            print("exception occured during sending code request to phone number"+e)
             return None
 
     return client
 
-    
-
-
 def login(client,entered_code):
     try:
-        client.sign_in(entered_code)
+        client.sign_in(code=entered_code)
     except Exception as e:
+        print("error occurred during final login")
+        print(e)
         return None
     return client
 

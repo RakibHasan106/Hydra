@@ -40,7 +40,8 @@ class firstPage(QMainWindow):
 
         self.login_button = QPushButton("Login")
         self.login_button.clicked.connect(self.login_button_clicked)
-        
+        self.login_button.setDisabled(True)
+
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
@@ -55,7 +56,7 @@ class firstPage(QMainWindow):
         
 
         central_widget.setLayout(vbox)
-        self.setMinimumSize(500, 600)
+        # self.setMinimumSize(500, 600)
     def send_code_button_clicked(self):
 
         api_id = self.api_id_text_area.text()
@@ -89,11 +90,13 @@ class firstPage(QMainWindow):
 
     def login_button_clicked(self):
         entered_code = self.sent_code.text()
+        if entered_code=="":
+            QMessageBox.warning(self,"warning","Entered Code is empty")
 
         temp_client = telegram_login.login(self.client, entered_code)
 
         if( temp_client  == None ):
-            QMessageBox(self,"warning","Your Entered Code is wrong!")
+            QMessageBox.warning(self,"warning","Your Entered Code is wrong!")
             return
         else:
             self.client = temp_client
@@ -107,8 +110,8 @@ class firstPage(QMainWindow):
             "api_hash" : self.api_hash_text_area.text()
         }
         
-        sesssion_path = os.path.join("./session","LastSavedSession.json")
-        with open(session_path, "w") as f:
+        json_path = os.path.join("./session","LastSavedSession.json")
+        with open(json_path, "w") as f:
             json.dump(data, f, indent=4)
         
         self.stackedWidget.setCurrentIndex(1)
