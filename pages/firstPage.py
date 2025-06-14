@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (QApplication,
 
 from src import telegram_login
 import json,os
-
+from pages import secondPage
 
 class firstPage(QMainWindow):
     def __init__(self,stackedWidget):
@@ -113,7 +113,11 @@ class firstPage(QMainWindow):
         json_path = os.path.join("./session","LastSavedSession.json")
         with open(json_path, "w") as f:
             json.dump(data, f, indent=4)
+
+        self.client.disconnect()
         
+        page2 = secondPage(self.stackedWidget)
+        self.stackedWidget.addWidget(page2)
         self.stackedWidget.setCurrentIndex(1)
 
         

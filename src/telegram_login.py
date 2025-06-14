@@ -13,11 +13,14 @@ def saved_info_login(session_details):
         client.connect()
     except Exception as e:
         print(e)
+        client.disconnect()
         return False
     
     if not client.is_user_authorized():
+        client.disconnect()
         return False
     else:
+        client.disconnect()
         return True
 
 
@@ -34,12 +37,14 @@ def send_code(api_id,api_hash,phone_number):
     except Exception as e:
         print("exception occured during connecting: ")
         print(e)
+        # client.disconnect()
         return None
 
     if not client.is_user_authorized():
         try:
             client.send_code_request(phone_number)
         except Exception as E:
+            client.disconnect()
             print("exception occured during sending code request to phone number"+e)
             return None
 
@@ -50,6 +55,7 @@ def login(client,entered_code):
         client.sign_in(code=entered_code)
     except Exception as e:
         print("error occurred during final login")
+        client.disconnect()
         print(e)
         return None
     return client
@@ -63,6 +69,7 @@ def get_client(session_details):
     try:
         client.connect()
     except Exception as e:
+        client.disconnect()
         client = None
     
     return client
