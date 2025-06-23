@@ -2,6 +2,7 @@
 import sys,asyncio
 from pages.firstPage import firstPage
 from pages.secondPage import secondPage
+from pages.sessionChooser import sessionChooserPage
 from src import telegram_login
 from qasync import QEventLoop, asyncSlot, QApplication
 
@@ -20,32 +21,37 @@ def main():
     app = QApplication(sys.argv)
     stacked_widget = QStackedWidget()
 
-    page1 = firstPage(stacked_widget)
-    # page3 = thirdPage(stacked_widget)
+    page1 = sessionChooserPage(stacked_widget)
+    page2 = firstPage(stacked_widget)
+    page3 = secondPage(stacked_widget)
 
     stacked_widget.addWidget(page1)
-    
-    # stacked_widget.addWidget(page3)
+    stacked_widget.addWidget(page2)
+    stacked_widget.addWidget(page3)
 
-    session_details = telegram_login.session_loader()
-    
-    logged_in = telegram_login.saved_info_login(session_details) if session_details!=None else False
-        
-    if(logged_in!=False):
-        page2 = secondPage(stacked_widget)
-        stacked_widget.addWidget(page2)
+    sessions = telegram_login.session_loader()
+
+    print(sessions)
+
+    if sessions == None:
         stacked_widget.setCurrentIndex(1)
-
     else:
-        print("first page")
         stacked_widget.setCurrentIndex(0)
+    
+    # logged_in = telegram_login.saved_info_login(session_details) if session_details!=None else False
+        
+    # if(logged_in!=False):
+    #     page2 = secondPage(stacked_widget)
+    #     stacked_widget.addWidget(page2)
+    #     stacked_widget.setCurrentIndex(1)
+
+    # else:
+    #     print("first page")
+    #     stacked_widget.setCurrentIndex(0)
 
     stacked_widget.show()
 
-    loop = QEventLoop(app)
-    asyncio.set_event_loop(loop)
-    with loop:
-        loop.run_forever()
+    sys.exit(app.exec_())
 
 if __name__ == "__main__":
     main()

@@ -8,4 +8,10 @@ tempCodeRunnerFile.py
 test21.py
 test123.py
 testing.py
-thumb.jpg
+*.session-journal
+*.jpg
+testing1.py
+testing2.py
+*.log
+*.mbtree
+TEMP

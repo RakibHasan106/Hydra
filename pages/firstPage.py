@@ -8,15 +8,20 @@ from PyQt5.QtWidgets import (QApplication,
                              QMessageBox
                              )
 
-from src import telegram_login
+from src import telegram_login,loginThread
 import json,os
-from pages import secondPage
+from pages.secondPage import secondPage
+from PyQt5.QtCore import QObject, pyqtSignal, QThread
 
 class firstPage(QMainWindow):
     def __init__(self,stackedWidget):
         super().__init__()
         self.stackedWidget = stackedWidget
         
+        self.login_error = None
+
+
+
         self.setWindowTitle("Telegram Sender")
         # self.setGeometry(1300,200,500,600)
         self.setFixedSize(500, 600)
@@ -67,12 +72,28 @@ class firstPage(QMainWindow):
             QMessageBox.warning(self,"warning","some required fields are empty")
             return
         
+        self.worker = loginThread.login_worker(api_id,api_hash,phone_number)
+        self.thread = QThread()
 
-        self.client = telegram_login.send_code(api_id,api_hash,phone_number)
+        self.worker.moveToThread(self.thread)
+
+        self.thread.started.connect(self.worker.run)
         
-        if (self.client==None):
-            QMessageBox.warning(self,"warning","your credentials werer wrong or any other error happened which I don't know about!")
-            return
+        self.worker.error.connect(self.set_error)
+        self.worker.finished.connect(self.check_error)
+
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.thread.deleteLater)
+        self.thread.finished.connect(self.worker.deleteLater)
+        
+        self.thread.start()
+        
+
+        # self.client = telegram_login.send_code(api_id,api_hash,phone_number)
+        
+        # if (self.client==None):
+        #     QMessageBox.warning(self,"warning","your credentials werer wrong or any other error happened which I don't know about!")
+        #     return
         
         self.api_id_text_area.setDisabled(True)
         self.api_hash_text_area.setDisabled(True)
@@ -92,32 +113,22 @@ class firstPage(QMainWindow):
         entered_code = self.sent_code.text()
         if entered_code=="":
             QMessageBox.warning(self,"warning","Entered Code is empty")
-
-        temp_client = telegram_login.login(self.client, entered_code)
-
-        if( temp_client  == None ):
-            QMessageBox.warning(self,"warning","Your Entered Code is wrong!")
             return
-        else:
-            self.client = temp_client
-
-
-        session_path = os.path.join("./session","saved_session.session")
-
-        data = {
-            "session_name" : session_path,
-            "api_id" : self.api_id_text_area.text(),
-            "api_hash" : self.api_hash_text_area.text()
-        }
         
-        json_path = os.path.join("./session","LastSavedSession.json")
-        with open(json_path, "w") as f:
-            json.dump(data, f, indent=4)
 
-        self.client.disconnect()
+        self.worker.enter_code(entered_code)
+              
         
-        page2 = secondPage(self.stackedWidget)
-        self.stackedWidget.addWidget(page2)
-        self.stackedWidget.setCurrentIndex(1)
+        # page2 = secondPage(self.stackedWidget)
+        # self.stackedWidget.addWidget(page2)
+        # self.stackedWidget.setCurrentIndex(1)
 
+    def check_error(self):
+        if self.login_error != None:
+            print("error not here")
+            self.stackedWidget.setCurrentIndex(2)
+            print("error seems to be here!")
+
+    def set_error(self,e):
+        self.login_error = e
         

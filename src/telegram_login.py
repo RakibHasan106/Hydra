@@ -3,24 +3,24 @@ from telethon.errors import SessionPasswordNeededError
 import asyncio,sys,os,json,string,random
 
 #PreLogin Authorization
-def saved_info_login(session_details):
+async def saved_info_login(session_details):
     client = TelegramClient (
         session_details["session_name"],
         session_details["api_id"],
         session_details["api_hash"]
     )
     try:
-        client.connect()
+        await client.connect()
     except Exception as e:
         print(e)
-        client.disconnect()
+        await client.disconnect()
         return False
     
     if not client.is_user_authorized():
-        client.disconnect()
+        await client.disconnect()
         return False
     else:
-        client.disconnect()
+        await client.disconnect()
         return True
 
 
@@ -39,6 +39,13 @@ def send_code(api_id,api_hash,phone_number):
         print(e)
         # client.disconnect()
         return None
+    
+    # try:
+    #         client.send_code_request(phone_number)
+    # except Exception as E:
+    #         client.disconnect()
+    #         print("exception occured during sending code request to phone number"+e)
+    #         return None
 
     if not client.is_user_authorized():
         try:
@@ -75,18 +82,35 @@ def get_client(session_details):
     return client
 
 def session_loader():
-    session_file_path = os.path.join(os.getcwd(),"session","LastSavedSession.json")
-    current_session = None
-    print(session_file_path)
+    sessions_file_path = os.path.join(os.getcwd(),"session","saved_sessions.json")
+    saved_sessions = None
+    print(sessions_file_path)
 
-    if(os.path.isfile(session_file_path)): #checks if session file exists or not
+    if(os.path.isfile(sessions_file_path)): #checks if session file exists or not
         print("file exists")
-        with open(session_file_path,"r") as f:
+        with open(sessions_file_path,"r") as f:
             try:
-                current_session = json.load(f)
+                saved_sessions = json.load(f)
+                saved_sessions = saved_sessions["sessions"]
             except:
                 return None
             # if telegram_login.saved_info_login(current_session) == True:
             #     stacked_widget.setCurrentIndex(2)
     
+    
+    return saved_sessions
+
+def current_session_loader():
+    current_session_path = os.path.join("./session","current_session.json")
+
+    current_session = None
+    if(os.path.isfile(current_session_path)):
+        try:
+            with open(current_session_path, "r") as f:
+                current_session = json.load(f)
+        
+        except Exception as e: 
+            print(e)
+            return None
+
     return current_session

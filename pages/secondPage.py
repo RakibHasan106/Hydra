@@ -6,42 +6,78 @@ from PyQt5.QtWidgets import (QApplication,
                              QVBoxLayout,
                              QLabel,
                              QProgressBar,
-                             QComboBox
+                             QComboBox,
+                             QLineEdit,
+                             QCheckBox
                              )
+
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
 from qasync import asyncSlot
-from collections import deque
-from FastTelethonhelper import fast_upload
-from moviepy import VideoFileClip
-from telethon.tl.types import DocumentAttributeVideo
 
-import asyncio,subprocess
+from pathlib import Path
 
-import os, shutil
-from src import telegram_login
+import os, shutil, queue, time
+from src import telegram_login,file_handler_fnc,compression
+from src.uploaderThread import UploaderThread
+from src.compresserThread import compresserThread
 
-def extract_thumbnail(video_path, thumb_path='thumb.jpg'):
-    cmd = [
-        'ffmpeg', '-ss' , '00:00:02', '-i', video_path,
-        '-frames:v', '1', '-q:v', '2', thumb_path, '-y'
-    ]
-    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return thumb_path
+# class compression_Worker(QObject):
+#     finished = pyqtSignal()
+#     progress = pyqtSignal(int)
+#     currentFileName = pyqtSignal(str)
+    
+#     def __init__(self,tasksQueue,targetSize):
+#         super().__init__()
+#         self.tasksQueue = tasksQueue
+#         self.targetSize = targetSize
+
+#     def run(self):
+#         task = 1
+        
+#         while not self.tasksQueue.empty():
+            
+#             #here do the compression task.
+#             file_path = self.tasksQueue.get(timeout=1)
+#             self.currentFileName.emit(file_path)
+            
+#             # time.sleep(2)
+#             # try:
+#             #     compression.compress(file_path,self.targetSize)
+#             #     # os.remove(file_path)
+#             # except Exception as E:
+#             #     print(E)
+            
+#             self.tasksQueue.task_done()    
+            
+#             self.progress.emit(task)
+
+#             print("compressed : "+str(self.currentFileName))
+            
+#             task = task+1
+        
+#         self.finished.emit()
+
+
 
 class secondPage(QMainWindow):
     def __init__(self,stackedWidget):
         super().__init__()
 
+        print("I am from second Page")
+
         self.abortUploading = False
 
+        # path list of the files to be uploaded
+        self.upload_queue = queue.Queue()
+
         self.folder_path = None
-        current_session = telegram_login.session_loader()
+        current_session = telegram_login.current_session_loader()
         self.client = telegram_login.get_client(current_session) if current_session!=None else None
 
         self._last_percent = 0
 
         self.stackedWidget = stackedWidget
-        self.setWindowTitle("Telegram Sender")
+        self.setWindowTitle("Hydra")
         self.setFixedSize(500, 600)
 
         self.select_folder_btn = QPushButton("Select Folder")
@@ -65,18 +101,39 @@ class secondPage(QMainWindow):
                 self.chat_list.append(dialog.entity)
                 self.dropdown.addItem(dialog.name,dialog.entity)
 
+        if self.client != None :
+            self.client.disconnect()
+
         #Button to start the uploading
         self.upload_button = QPushButton("Upload")
         self.upload_button.clicked.connect(self.upload_button_clicked)
 
         #Abort Button
         self.abort_button = QPushButton("Abort Upload")
-        self.abort_button.clicked.connect(self.abort_upload)
+        # self.abort_button.clicked.connect(self.abort_upload)
 
-        #client disconnect button
+        #checkerBox if user want to compress now or just move to a separate folder for converting later
+        self.convertCheckbox = QCheckBox("Convert Unsupported Videos now?")
+        self.convertCheckbox.stateChanged.connect(self.checkbox_changed)
+        self.conversionNeeded = False
 
-        self.disconnect_button = QPushButton("Disconnect")
-        self.disconnect_button.clicked.connect(self.disconnect_button_clicked)
+        #Thread update show
+        self.compression_status = QLabel("No compression going on...")
+        self.compression_progress = QProgressBar()
+        self.compression_progress.setValue(0)
+
+        self.compression_size_limit = QLineEdit()
+        self.compression_size_limit.setPlaceholderText("In MB")
+        self.compression_size_limit.setDisabled(True)
+
+        # Thread Running status
+        self.is_compressionThread_running = False
+        # if uploader Thread is running
+        self.is_uploadThread_running = False
+
+        # Compression Task Queue
+        
+        self.tasksQueue = queue.Queue()
 
 
         central_widget = QWidget()
@@ -86,228 +143,219 @@ class secondPage(QMainWindow):
         vbox.addWidget(self.select_folder_btn)
         vbox.addWidget(self.dropdown)
 
+        vbox.addWidget(self.convertCheckbox)
+
+        vbox.addWidget(self.compression_size_limit)
+        
         vbox.addWidget(self.upload_button)
         vbox.addWidget(self.progress_bar)
 
+
         vbox.addWidget(self.abort_button)
 
-        vbox.addWidget(self.disconnect_button)
-
         vbox.addWidget(self.status_label)
+
+        vbox.addWidget(self.compression_status)
+        vbox.addWidget(self.compression_progress)
 
 
 
         central_widget.setLayout(vbox)
         # self.setMinimumSize(500,600)
 
-
         # print("successfully logged in!!!!! you done quite a good job! proud of you")
+    
     def on_selection_change(self,idx):
         self.chat_to_send = self.dropdown.itemData(idx)
-
-    def get_video_metadata(self,path):
-        clip = VideoFileClip(path)
-        duration = int(clip.duration)
-        width = clip.w 
-        height = clip.h
-        clip.close()
-        return duration, width , height
+ 
     
     def abort_upload(self):
         self.status_label.setText("Aborting upload....")
         self.abortUploading = True
         
 
-    
-    @asyncSlot()
-    async def upload_button_clicked(self):
+    def upload_button_clicked(self):
 
-        await self.client.disconnect()
-        current_session = telegram_login.session_loader()
-        self.client = telegram_login.get_client(current_session)
-        await self.client.connect()
+        # await self.client.disconnect()
+        # current_session = telegram_login.session_loader()
+        # self.client = telegram_login.get_client(current_session)
+        # await self.client.connect() 
 
-        if self.chat_to_send==None or self.folder_path == None:
+        if self.chat_to_send==None or self.folder_path == None or self.compression_size_limit.text()=="":
             return
 
         self.dropdown.setEnabled(False)
         self.select_folder_btn.setEnabled(False)
         self.upload_button.setEnabled(False)
+        self.convertCheckbox.setEnabled(False)
+        self.compression_size_limit.setEnabled(False)
 
-        for root, dirs, files in os.walk(self.folder_path):
-            for file in files:
-                file_name = file
-                file_path = os.path.join(root,file)
+        directory = Path(self.folder_path)
+        for path in directory.iterdir():
+            file_name = path.stem
+            file_path = path
+
+            if file_path.is_file():
                 size = (os.path.getsize(file_path)/1000)/1000
+                if file_handler_fnc.is_video(file_path):
+                    
+                    if size>2000 or file_path.suffix.lower()!='.mp4' or compression.get_resolution_label(file_path)=="high res":
+                        print("moving "+file_name)
+                        convert_path = os.path.join(file_path.parent,"convert")
+                        if not os.path.isdir(convert_path):
+                            os.mkdir(convert_path)    
+
+                        shutil.move(file_path,convert_path)
+                        
+                        print("moved!")
+
+                        toBeConvertedFilePath = os.path.join(convert_path,file_path.name)
+
+                        self.tasksQueue.put(toBeConvertedFilePath)
+                        
+                        #now start the compression
+                        if(self.is_compressionThread_running==False and self.conversionNeeded==True):
+                            self.start_compression(toBeConvertedFilePath,self.compression_size_limit.text())
+                            self.is_compressionThread_running = True
+                        
+
+
+                    elif file_path.suffix=='.mp4':
+
+                        print("uploading "+file_name)
+                        
+                        self.status_label.setText(f"Uploading {file_path.name}....")
+
+                        self.upload_queue.put(file_path)
+
+                        if not self.is_uploadThread_running:
+                            self.startUpload()
+                            self.is_uploadThread_running=True
+
+                        # duration, width, height = file_handler_fnc.get_video_metadata(file_path)
+                        # thumb = file_handler_fnc.extract_thumbnail(file_path)
+
+                        # try:
+                        #     media = await fast_upload(
+                        #                         self.client, 
+                        #                         file_location=file_path, 
+                        #                         name=file_name+".mp4", 
+                        #                         progress_bar_function=self.progress_callback
+                        #                         )
+                        
+                        #     await self.client.send_file(
+                        #         entity=self.chat_to_send.id,
+                        #         file=media,
+                        #         caption=file_name,
+                        #         thumb=thumb,
+                        #         supports_streaming=True,
+                        #         attributes=[
+                        #             DocumentAttributeVideo(
+                        #                 duration = duration,
+                        #                 w = width,
+                        #                 h = height,
+                        #                 supports_streaming = True
+                        #             )
+                        #         ]
+                        #     )
+                        #     os.remove(file_path)
+
+                        # except Exception as e: 
+                        #     print(e)
+
+                        
+                        #now delete the file
+
+                        
+                        # os.remove(thumb)
+                        
+                        # if self.abort_upload == True:
+                        #     self.abort_upload = False
+                        #     self.status_label.setText("Upload Aborted By User")
+                        #     break
                 
-                if (size>2000) or not self.is_media(file_path):
-                    convert_path = os.path.join(root,"convert")
-                    if not os.path.isdir(convert_path):
-                        os.mkdir(convert_path)    
-                    
-                    #now have to go into the compression world
-
-                    shutil.move(file_path,convert_path)
-
-                    
                 else:
-                    # print("I am doing my job: uploading")
-                    print(file_name)
-                    # await self.upload_file(file_path,file_name)
-                    self.status_label.setText(f"Uploading {os.path.basename(file_path)}....")
-                    
-                    duration, width, height = self.get_video_metadata(file_path)
-                    thumb = extract_thumbnail(file_path)
+                    # Here I will handle files those are not videos 
+                    print("I am not a video , handle me wisely")
+            
 
-                    try:
-                        media = await fast_upload(
-                                              self.client, 
-                                              file_location=file_path, 
-                                              name=file_name, 
-                                              progress_bar_function=self.progress_callback
-                                            )
-                    
-                        await self.client.send_file(
-                            entity=self.chat_to_send.id,
-                            file=media,
-                            caption=file_name,
-                            thumb=thumb,
-                            supports_streaming=True,
-                            attributes=[
-                                DocumentAttributeVideo(
-                                    duration = duration,
-                                    w = width,
-                                    h = height,
-                                    supports_streaming = True
-                                )
-                            ]
-                        )
-
-                    except Exception as e: 
-                        print(e)
-
-                    
-                    #now delete the file
-                    #  as there is problem with this code , 
-                    # still not implementing the video delete logic
-
-                    # upload_path = os.path.join(root,"upload")
-                    # if not os.path.isdir(upload_path):
-                    #     os.mkdir(upload_path)    
-
-                    # shutil.move(file_path,upload_path)
-
-                    os.remove(file_path)
-                    os.remove(thumb)
-                    
-
-                    if self.abort_upload == True:
-                        self.abort_upload = False
-                        self.status_label.setText("Upload Aborted By User")
-                        break
-                    
-        if(self.abort_upload!=True):
-            self.status_label.setText("All uploads complete")
+        # if(self.abort_upload!=True):
+        #     self.status_label.setText("All uploads complete")
         
         self.dropdown.setEnabled(True)
         self.select_folder_btn.setEnabled(True)
         self.upload_button.setEnabled(True)
 
 
-    def progress_callback(self,sent_bytes, total_bytes):
-            percent = int((sent_bytes / total_bytes) * 100)
+    def progress_callback(self,percent):
+            
             print(percent)
             # Only update if percent changed
-            
-            if percent != getattr(self, '_last_percent', None):
-                self.progress_bar.setValue(percent)
-                self._last_percent = percent
-
-            return "progressed!"
+            self.progress_bar.setValue(percent)
     
     def select_folder(self):
         self.folder_path = QFileDialog.getExistingDirectory(None,"Select Folder")
         # files = os.listdir(self.folder_path)
-    
-    # async def upload_file(self,file_path,file_name):
-    #     self._last_percent = 0
-    #     try:
-    #         file_size = os.path.getsize(file_path)
-    #         self.status_label.setText(f"Uploading {os.path.basename(file_path)}....")
-    #         # await asyncio.sleep(100)
 
-    #         # Custom progress callback function
+    def start_compression(self,file_path,compression_size_limit):
         
-    #         def progress_callback(sent_bytes, total_bytes):
-    #             percent = int((sent_bytes / total_bytes) * 100)
-    #             # Only update if percent changed
-    #             if percent != getattr(self, '_last_percent', None):
-    #                 self.progress_bar.setValue(percent)
-    #                 self._last_percent = percent
-            
-    #         if self.client == None:
-    #             print("client is none")
+        target_size = float(compression_size_limit)
+        self.compression_status.setText("compressing...")
+        self.compressThread = QThread()
+        self.compressWorker = compresserThread(self.tasksQueue,target_size)
 
+        self.compressWorker.moveToThread(self.compressThread)
 
-    #         print(self.chat_to_send.id)
-    #         # Send file to "Saved Messages" with progress
-    #         try:
-    #             await self.client.send_file(
-    #                 entity=self.chat_to_send.id,
-    #                 file=file_path,
-    #                 caption=file_name,
-    #                 progress_callback=progress_callback,
-    #                 part_size_kb=4096
-    #             )
-    #         except Exception as e:
-    #             print(e)   
-            
+        self.compressThread.started.connect(self.compressWorker.run)
 
-    #         self.status_label.setText(f"Uploaded {os.path.basename(file_path)}")
-
-    #     except Exception as e:
-    #         self.status_label.setText(f"Error: {str(e)}")
-    
-    
-
-    # def start_next_upload(self):
-    #     if not self.upload_queue:
-    #         self.status_label.setText("All uploads complete.")
-    #         return
-
-    #     file_path = self.upload_queue.popleft()
-    #     self.upload_worker = upload_worker(file_path, self.client,self.chat_to_send)
-    #     self.upload_thread = QThread()  # Create a new thread
-
-    #     self.upload_worker.moveToThread(self.upload_thread)
-    #     self.upload_thread.started.connect(self.upload_worker.run)
-    #     self.upload_worker.progress.connect(self.progress_bar.setValue)
-    #     self.upload_worker.status.connect(self.status_label.setText)
-    #     self.upload_worker.finished.connect(self.upload_thread.quit)
-    #     self.upload_worker.finished.connect(self.start_next_upload)
-    #     self.upload_worker.finished.connect(self.upload_worker.deleteLater)
-    #     self.upload_thread.finished.connect(self.upload_thread.deleteLater)
-
-    #     self.upload_thread.start()
-                    
-
-    def is_media(self,file_path):
+        # self.compressWorker.progress.connect(self.update_compression_progress)
+        # self.compressWorker.currentFileName.connect(self.update_compression_status)
         
-        MEDIA_EXTENSIONS = {
-            "image": ['.jpg', '.jpeg', '.png', '.webp'],
-            "video": ['.mp4'],  # must be H.264 + AAC
-            "gif": ['.gif'],
-            "audio": ['.mp3', '.m4a', '.ogg', '.wav', '.flac']
-        }
-        
-        ext = os.path.splitext(file_path)[1].lower()
+        self.compressWorker.finished.connect(self.compression_completed)
+        self.compressWorker.finished.connect(self.compressThread.quit)
+        self.compressWorker.finished.connect(self.compressThread.deleteLater)
+        self.compressThread.finished.connect(self.compressWorker.deleteLater)
+
+        self.compressThread.start()
+
+    def update_compression_status(self,status):
+        self.compression_status.setText("compressing "+os.path.basename(status))
+
+    def update_compression_progress(self,progress):
+        self.compression_progress.setValue(progress)
     
-        for media_type, extensions in MEDIA_EXTENSIONS.items():
-            if ext in extensions:
-                return True
-        
-        return False
+    def compression_completed(self):
+        self.is_compressionThread_running = False
+        self.compression_status.setText("completed!")
     
-    def disconnect_button_clicked(self):
-        if self.client!=None : 
-            self.client.disconnect()
+
+    def startUpload(self):
+        self.uploadWorker = UploaderThread(self.upload_queue,self.chat_to_send)
+        self.uploaderThread = QThread()
+
+        self.uploadWorker.moveToThread(self.uploaderThread)
+
+        self.uploaderThread.started.connect(self.uploadWorker.run)
+
+        self.uploadWorker.update.connect(self.progress_callback)
+
+        self.uploadWorker.finished.connect(self.upload_finished)
+        self.uploadWorker.finished.connect(self.uploaderThread.quit)
+        self.uploadWorker.finished.connect(self.uploaderThread.deleteLater)
+        self.uploaderThread.finished.connect(self.uploadWorker.deleteLater)
+
+        self.uploaderThread.start()
+
+    def upload_finished(self):
+        self.status_label.setText("Upload Finished!")
+        self.is_uploadThread_running = False
+
+    def checkbox_changed(self,state):
+        if self.convertCheckbox.isChecked():
+            self.conversionNeeded = True
+            self.compression_size_limit.setEnabled(True)
+        
+        else:
+            self.conversionNeeded = False   
+            self.compression_size_limit.setEnabled(False)
+    
