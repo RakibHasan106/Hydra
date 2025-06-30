@@ -83,7 +83,7 @@ class firstPage(QMainWindow):
         self.worker.finished.connect(self.check_error)
 
         self.worker.finished.connect(self.thread.quit)
-        self.worker.finished.connect(self.thread.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
         self.thread.finished.connect(self.worker.deleteLater)
         
         self.thread.start()

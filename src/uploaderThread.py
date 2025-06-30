@@ -5,10 +5,12 @@ from FastTelethonhelper import fast_upload
 from telethon.sync import TelegramClient
 from telethon.tl.types import DocumentAttributeVideo
 from pathlib import Path
+from send2trash import send2trash
 
 class UploaderThread(QObject):
     finished = pyqtSignal()
     update = pyqtSignal(float)
+    fileNamebeingUploaded = pyqtSignal(str)
 
     def __init__(self,uploadQueue,chat_to_send):
         super().__init__()
@@ -33,10 +35,18 @@ class UploaderThread(QObject):
         await client.connect()
         print("client connected successfully for upload")
 
+        def progress_callback(done, total):
+            percent = (done / total) * 100
+            print("progress callback is being called")
+            self.update.emit(percent)
+            return "progressed"
+
+
         while not self.uploadQueue.empty():
             file_path = self.uploadQueue.get()
 
             file_name = file_path.stem
+            self.fileNamebeingUploaded.emit(file_name)
 
             print(f"uploading {file_name}...")
 
@@ -48,7 +58,7 @@ class UploaderThread(QObject):
                                             client, 
                                             file_location=file_path, 
                                             name=file_name+".mp4", 
-                                            progress_bar_function=self.progress_callback
+                                            progress_bar_function=progress_callback
                                         )
                         
                 await client.send_file(
@@ -68,20 +78,24 @@ class UploaderThread(QObject):
                             )
                 
                 os.remove(file_path)
+                # send2trash(file_path)
 
             except Exception as e: 
                 print(e)
 
-                        
             os.remove(thumb)
                         
                         # if self.abort_upload == True:
                         #     self.abort_upload = False
                         #     self.status_label.setText("Upload Aborted By User")
                         #     break
-    
-    def progress_callback(self,done,total):
-        percent = (total/done)*100
-        print("progress callback is being called")
         
-        self.update.emit(percent)
+        await client.disconnect()
+        print("client disconnected after upload!")
+
+    # def progress_callback(self,done,total):
+    #     percent = (done/total)*100
+    #     print("progress callback is being called")
+        
+    #     self.update.emit(percent)
+    #     return "progressed" 

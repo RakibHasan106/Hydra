@@ -49,4 +49,17 @@ def is_video(file_path):
          return True
     
     return False
+
+def is_old_video(file_path):
+    old_video_extensions = [
+        ".3gp", ".amv", ".asf", ".avi", ".divx", ".dv",
+        ".flv", ".fli", ".flic", ".gvi", ".mov", ".mpeg",
+        ".mpg", ".mpv", ".nsv", ".ogv", ".qt", ".rm",
+        ".rmvb", ".vob", ".wm", ".wmv", ".yuv"
+    ]
+     
+    if file_path.suffix.lower() in old_video_extensions:
+         return True
+    
+    return False
     

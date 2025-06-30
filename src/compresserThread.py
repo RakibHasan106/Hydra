@@ -4,31 +4,61 @@ import os
 import subprocess,json
 from pathlib import Path
 from moviepy import VideoFileClip
-
+from send2trash import send2trash
+from src import file_handler_fnc
 
 class compresserThread(QObject):
     finished = pyqtSignal()
     progress = pyqtSignal()
+    fileNamebeingCompressed = pyqtSignal(str)
 
-    def __init__(self,fileQueue,targetSize):
+    def __init__(self,fileQueue,targetSize,upload_queue):
         super().__init__()
         self.fileQueue = fileQueue
         self.targetSize = targetSize
+        self.upload_queue = upload_queue
 
     def run(self):
         encoder = detect_gpu_encoder()
         while not self.fileQueue.empty():
              file = self.fileQueue.get()
-             size = (os.path.getsize(file)/100)/100
              file_path = Path(file)
+             size = (os.path.getsize(file_path)/1000)/1000
 
              output_path = os.path.join(file_path.parent,"compressed",file_path.stem+"_compressed.mp4")
              os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
              if not Path(file).is_dir():
+                self.fileNamebeingCompressed.emit(file_path.name)
                 if size>2000:
-                    print(encoder)
+                    print("I am dual pass")
+                    
                     print("compressing - "+Path(file).name+"...")
+
+                    if file_handler_fnc.is_old_video(file_path):
+                        process_args = [
+                            "ffmpeg", "-i", f"{str(file)}",
+                            "-c:v", encoder,
+                            "-c:a", "aac",
+                            str(output_path)
+                        ]
+                    # cmd_args = " ".join(process_args)
+
+                        try:
+                            subprocess.check_call(process_args)
+                        except:
+                            print("encountered an error during compressing : "+ file_path.name)
+
+
+                        temp_size = (os.path.getsize(output_path)/1000)/1000
+                        if(temp_size>2000):
+                            os.remove(output_path)
+                        else:
+                            self.upload_queue.put(Path(output_path))
+                            os.remove(file)
+                            # send2trash(file)
+                            continue
+
                     expected_bitrate = calculate_video_bitrate(file,float(self.targetSize))
                     print(expected_bitrate)
                     cmd_args = ["ffmpeg", "-i" , str(file), "-y"]
@@ -52,27 +82,38 @@ class compresserThread(QObject):
                         "-b:v", str(expected_bitrate)+"k",
                         "-c:v", encoder,
                         "-pass", "2",
-                        "-c:a", "copy",
+                        "-c:a", "aac",
                         str(output_path)
                     ]
                     # cmd_args_2 = " ".join(process_args_pass_2)
 
-                    subprocess.run(process_args_pass_1)
-                    subprocess.run(process_args_pass_2)
-
-                    print("I am working fine")
-
+                    try:
+                        subprocess.check_call(process_args_pass_1)
+                        subprocess.check_call(process_args_pass_2)
+                        self.upload_queue.put(Path(output_path))
+                        os.remove(file)
+                        # send2trash(file)
+                    except:
+                        print("encountered an error during compressing : "+ file_path.name)
                     
                 else:
-                    # print(file)
+                    
                     process_args = [
                         "ffmpeg", "-i", f"{str(file)}",
                         "-c:v", encoder,
+                        "-c:a", "aac",
                         str(output_path)
                     ]
                     # cmd_args = " ".join(process_args)
 
-                    subprocess.run(process_args)
+                    try:
+                        subprocess.check_call(process_args)
+                        self.upload_queue.put(Path(output_path))
+                        os.remove(file)
+                        # send2trash(file)
+                    except:
+                        print("encountered an error during compressing : "+ file_path.name)
+                    
                     # p1 = subprocess.Popen(f'start cmd /k "{cmd_args}"', shell=True)
                     # p1.wait()
                 # os.remove(file)
