@@ -77,6 +77,10 @@ class secondPage(QMainWindow):
         self.convertCheckbox.stateChanged.connect(self.checkbox_changed)
         self.conversionNeeded = False
 
+        self.uploadCheckbox = QCheckBox("Do you want to just convert videos?")
+        self.uploadCheckbox.stateChanged.connect(self.uploadCheckbox_changed)
+        self.uploadNotNeeded = False
+
         #Thread update show
         self.compression_status = QLabel("No compression going on...")
         self.compression_progress = QProgressBar()
@@ -101,7 +105,8 @@ class secondPage(QMainWindow):
         vbox.addWidget(self.convertCheckbox)
 
         vbox.addWidget(self.compression_size_limit)
-        
+        vbox.addWidget(self.uploadCheckbox)
+
         vbox.addWidget(self.upload_button)
         
         vbox.addWidget(self.status_label)
@@ -144,7 +149,7 @@ class secondPage(QMainWindow):
         self.convertCheckbox.setEnabled(False)
         self.compression_size_limit.setEnabled(False)
 
-        self.controllWorker = UploadCompressControllerThread(self.folder_path,self.conversionNeeded,self.compression_size_limit.text(),self.chat_to_send)
+        self.controllWorker = UploadCompressControllerThread(self.folder_path,self.conversionNeeded,self.compression_size_limit.text(),self.chat_to_send,self.uploadNotNeeded)
         self.controllThread = QThread()
 
         self.controllWorker.moveToThread(self.controllThread)
@@ -201,3 +206,10 @@ class secondPage(QMainWindow):
             self.conversionNeeded = False   
             self.compression_size_limit.setEnabled(False)
     
+    def uploadCheckbox_changed(self,state):
+        if self.uploadCheckbox.isChecked():
+            self.uploadNotNeeded = True
+            self.upload_button.setText("Compress")
+        else:
+            self.uploadNotNeeded = False
+            self.upload_button.setText("upload")

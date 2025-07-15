@@ -11,6 +11,26 @@ async def saved_info_login(session_details):
     )
     try:
         await client.connect()
+        
+        me = await client.get_me()
+        username = me.username
+        print(username)
+                
+        if username == None : 
+            username = me.first_name + " " + me.last_name
+        
+        new_session = {
+            "user_name" : username,
+            "session_name" : session_details["session_name"],
+            "api_id" : session_details["api_id"],
+            "api_hash" : session_details["api_hash"]
+        }
+                
+        current_session_json = os.path.join("./session","current_session.json")
+                
+        with open(current_session_json, 'w') as f:
+            json.dump(new_session,f,indent=2)
+    
     except Exception as e:
         print(e)
         await client.disconnect()

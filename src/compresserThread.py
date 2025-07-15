@@ -12,11 +12,12 @@ class compresserThread(QObject):
     progress = pyqtSignal()
     fileNamebeingCompressed = pyqtSignal(str)
 
-    def __init__(self,fileQueue,targetSize,upload_queue):
+    def __init__(self,fileQueue,targetSize,upload_queue,uploadNotNeeded):
         super().__init__()
         self.fileQueue = fileQueue
         self.targetSize = targetSize
         self.upload_queue = upload_queue
+        self.uploadNotNeeded = uploadNotNeeded
 
     def run(self):
         encoder = detect_gpu_encoder()
@@ -34,15 +35,23 @@ class compresserThread(QObject):
                     print("I am dual pass")
                     
                     print("compressing - "+Path(file).name+"...")
+                    
 
                     if file_handler_fnc.is_old_video(file_path):
                         process_args = [
-                            "ffmpeg", "-i", f"{str(file)}",
-                            "-c:v", encoder,
+                            "ffmpeg", "-i", f"{str(file)}"
+                        ]
+
+                        if get_resolution_label(file)=="high res":
+                            process_args.extend(["-vf","scale=1920:1080"])
+                        
+                        # cmd_args = " ".join(process_args)
+                        
+                        process_args.extend([
+                             "-c:v", encoder,
                             "-c:a", "aac",
                             str(output_path)
-                        ]
-                    # cmd_args = " ".join(process_args)
+                        ])
 
                         try:
                             subprocess.check_call(process_args)
@@ -54,7 +63,8 @@ class compresserThread(QObject):
                         if(temp_size>2000):
                             os.remove(output_path)
                         else:
-                            self.upload_queue.put(Path(output_path))
+                            if self.uploadNotNeeded != True : 
+                                self.upload_queue.put(Path(output_path))
                             os.remove(file)
                             # send2trash(file)
                             continue
@@ -90,7 +100,10 @@ class compresserThread(QObject):
                     try:
                         subprocess.check_call(process_args_pass_1)
                         subprocess.check_call(process_args_pass_2)
-                        self.upload_queue.put(Path(output_path))
+                        
+                        if self.uploadNotNeeded != True : 
+                                self.upload_queue.put(Path(output_path))
+                        
                         os.remove(file)
                         # send2trash(file)
                     except:
@@ -108,7 +121,10 @@ class compresserThread(QObject):
 
                     try:
                         subprocess.check_call(process_args)
-                        self.upload_queue.put(Path(output_path))
+                        
+                        if self.uploadNotNeeded != True : 
+                                self.upload_queue.put(Path(output_path))
+                        
                         os.remove(file)
                         # send2trash(file)
                     except:

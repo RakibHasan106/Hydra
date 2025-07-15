@@ -10,7 +10,7 @@ class UploadCompressControllerThread(QObject):
     changeCompressionStatus = pyqtSignal(str)
     changeUploadStatus = pyqtSignal(str)
 
-    def __init__(self,folder_path,conversionNeeded,compression_size_limit,chat_to_send):
+    def __init__(self,folder_path,conversionNeeded,compression_size_limit,chat_to_send,uploadNotNeeded):
         
         super().__init__()
         self.folder_path = folder_path
@@ -25,6 +25,7 @@ class UploadCompressControllerThread(QObject):
         self.compression_size_limit = compression_size_limit
 
         self.chat_to_send = chat_to_send
+        self.uploadNotNeeded = uploadNotNeeded
     
     def run(self):
 
@@ -60,7 +61,7 @@ class UploadCompressControllerThread(QObject):
                             
                         
 
-                    elif file_path.suffix=='.mp4':
+                    elif file_path.suffix=='.mp4' and not self.uploadNotNeeded:
                         
                         self.upload_queue.put(file_path)
 
@@ -96,7 +97,7 @@ class UploadCompressControllerThread(QObject):
         self._poll_timer.start()
 
     def _poll_queues(self):
-        if not self.upload_queue.empty() and not self.is_uploadThread_running:
+        if not self.upload_queue.empty() and not self.is_uploadThread_running and not self.uploadNotNeeded:
             self.is_uploadThread_running = True
             self.start_upload()
 
@@ -115,7 +116,7 @@ class UploadCompressControllerThread(QObject):
         #self.changeCompressionStatus.emit("compressing..."+os.path.basename(file_path)) # have to fix this
         
         self.compressThread = QThread()
-        self.compressWorker = compresserThread(self.tasksQueue,target_size,self.upload_queue)
+        self.compressWorker = compresserThread(self.tasksQueue,target_size,self.upload_queue,self.uploadNotNeeded)
 
         self.compressWorker.moveToThread(self.compressThread)
 

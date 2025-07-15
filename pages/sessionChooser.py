@@ -47,8 +47,6 @@ class sessionChooserPage(QMainWindow):
             for session in sessions:
                 self.dropDownSession.addItem(session["user_name"],session)
         
-        self.dropDownSession.currentIndexChanged.connect(self.on_selection_change)
-        self.currentSession = self.dropDownSession.currentData()
 
         self.login_button = QPushButton("Login")
         self.login_button.clicked.connect(self.login_button_clicked)
@@ -67,8 +65,6 @@ class sessionChooserPage(QMainWindow):
 
         central_widget.setLayout(vbox)
     
-    def on_selection_change(self,idx):
-        self.currentSession = self.dropDownSession.itemData(idx)
 
     def add_another_acc_btn_clicked(self):
         self.stackedWidget.setCurrentIndex(1)
@@ -76,8 +72,9 @@ class sessionChooserPage(QMainWindow):
     def login_button_clicked(self):
         
         #now create a thread and use that thread to login.
+        currentSession = self.dropDownSession.currentData()
         self.thread = QThread()
-        self.worker = saved_session_login_worker(self.currentSession)
+        self.worker = saved_session_login_worker(currentSession)
 
         self.worker.moveToThread(self.thread)
 
